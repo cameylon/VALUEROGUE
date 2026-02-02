@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  TEAM_LEADER
+  QUALITY_SAFETY
+  FINANCE
+  ADMIN
+  MANAGEMENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ShiftStatus {
+  OPEN
+  ASSIGNED
+  COMPLETED
+}
+
+enum CareNoteStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum IncidentStatus {
+  DRAFT
+  UNDER_REVIEW
+  SUBMITTED
+  CLOSED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EvidencePackStatus {
+  GENERATED
+}
+
+enum SettingCategory {
+  AI
+  COMPLIANCE
+  ROSTER
+  REDACTION
+}
+
+enum AgentTool {
+  CARE_NOTE_COPILOT
+}
+
+model User {
+  id             String   @id @default(uuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role
+  status         UserStatus @default(ACTIVE)
+  createdAt      DateTime @default(now())
+  availability   Availability?
+  careNotes      CareNote[]
+  incidents      Incident[]
+  approvals      ApprovalRequest[] @relation("ApprovalRequestedBy")
+  decisions      ApprovalRequest[] @relation("ApprovalDecidedBy")
+  auditEvents    AuditEvent[]
+}
+
+model Availability {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  preferredHours Json
+  blackoutDates  Json
+  user           User     @relation(fields: [userId], references: [id])
+}
+
+model Client {
+  id             String   @id @default(uuid())
+  preferredName  String
+  legalName      String?
+  dob            DateTime?
+  notes          String?
+  careNotes      CareNote[]
+  incidents      Incident[]
+}
+
+model Home {
+  id            String   @id @default(uuid())
+  name          String
+  suburb        String
+  supportRatio  String
+  featuresJson  Json
+  active        Boolean  @default(true)
+  shifts        Shift[]
+  incidents     Incident[]
+}
+
+model Shift {
+  id               String   @id @default(uuid())
+  homeId           String
+  clientId         String?
+  start            DateTime
+  end              DateTime
+  requiredSkills   Json
+  assignedUserId   String?
+  status           ShiftStatus @default(OPEN)
+  home             Home     @relation(fields: [homeId], references: [id])
+  client           Client?  @relation(fields: [clientId], references: [id])
+  assignedUser     User?    @relation(fields: [assignedUserId], references: [id])
+  careNotes        CareNote[]
+}
+
+model CareNote {
+  id             String   @id @default(uuid())
+  clientId       String
+  authorUserId   String
+  shiftId        String?
+  noteText       String
+  structuredJson Json
+  status         CareNoteStatus @default(DRAFT)
+  submittedAt    DateTime?
+  client         Client   @relation(fields: [clientId], references: [id])
+  author         User     @relation(fields: [authorUserId], references: [id])
+  shift          Shift?   @relation(fields: [shiftId], references: [id])
+  approvals      ApprovalRequest[]
+}
+
+model Incident {
+  id               String   @id @default(uuid())
+  clientId         String
+  homeId           String
+  reporterUserId   String
+  category         String
+  severity         String
+  description      String
+  immediateActions String
+  status           IncidentStatus @default(DRAFT)
+  dueDatesJson     Json
+  createdAt        DateTime @default(now())
+  client           Client   @relation(fields: [clientId], references: [id])
+  home             Home     @relation(fields: [homeId], references: [id])
+  reporter         User     @relation(fields: [reporterUserId], references: [id])
+  evidencePacks    EvidencePack[]
+  approvals        ApprovalRequest[]
+}
+
+model EvidencePack {
+  id               String   @id @default(uuid())
+  incidentId       String
+  generatedByUserId String
+  filePath         String
+  hash             String
+  createdAt        DateTime @default(now())
+  status           EvidencePackStatus @default(GENERATED)
+  incident         Incident @relation(fields: [incidentId], references: [id])
+  generatedBy      User     @relation(fields: [generatedByUserId], references: [id])
+}
+
+model ApprovalRequest {
+  id            String   @id @default(uuid())
+  entityType    String
+  entityId      String
+  requestedBy   String
+  requiredRole  Role
+  status        ApprovalStatus @default(PENDING)
+  decidedBy     String?
+  decidedAt     DateTime?
+  comment       String?
+  createdAt     DateTime @default(now())
+  requester     User @relation("ApprovalRequestedBy", fields: [requestedBy], references: [id])
+  decider       User? @relation("ApprovalDecidedBy", fields: [decidedBy], references: [id])
+}
+
+model AuditEvent {
+  id            String   @id @default(uuid())
+  actorUserId   String
+  action        String
+  entityType    String
+  entityId      String
+  metadataJson  Json
+  createdAt     DateTime @default(now())
+  ip            String?
+  actor         User     @relation(fields: [actorUserId], references: [id])
+}
+
+model AgentRun {
+  id              String   @id @default(uuid())
+  runId           String
+  tool            AgentTool
+  modelName       String
+  tokenEstimate   Int
+  redactionSummary String
+  promptHash      String
+  outputChecksum  String
+  createdAt       DateTime @default(now())
+}
+
+model SystemSetting {
+  id        String          @id @default(uuid())
+  category  SettingCategory
+  key       String
+  valueJson Json
+  updatedAt DateTime @updatedAt
+}
